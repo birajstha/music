@@ -1,56 +1,65 @@
 <script lang="ts">
-  import type { PodcastEpisode, PodcastShow } from '../api/types';
+  import type { PodcastEpisode } from '../api/types';
   import { player } from '../stores/player';
-  import { formatDuration } from '../api/music';
 
   export let episode: PodcastEpisode;
   export let active = false;
 
   function playEpisode() {
-    player.play({ ...episode, _type: 'podcast' });
+    player.play({ ...episode, _type: 'podcast' } as any, [{ ...episode, _type: 'podcast' } as any]);
   }
 
-  function formatDate(s: string) {
-    try { return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
-    catch { return ''; }
+  function formatDate(d: string) {
+    if (!d) return '';
+    const date = new Date(d);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   }
 </script>
 
-<!-- svelte-ignore a11y-click-events-have-key-events -->
-<!-- svelte-ignore a11y-no-static-element-interactions -->
-<div class="pod-card {active ? 'active' : ''}" on:click={playEpisode}>
-  <div class="pod-icon">{episode.showIcon}</div>
-  <div class="pod-info">
-    <p class="pod-show">{episode.showName}</p>
-    <p class="pod-title">{episode.title}</p>
-    <p class="pod-meta">{formatDate(episode.pubDate)} {episode.duration ? '· ' + formatDuration(episode.duration) : ''}</p>
-    {#if episode.description}
-      <p class="pod-desc">{episode.description}</p>
-    {/if}
+<button class="podcast-card {active ? 'active' : ''}" on:click={playEpisode}>
+  <div class="pc-icon">{episode.showIcon || '🎙️'}</div>
+  <div class="pc-info">
+    <strong class="pc-title">{episode.title}</strong>
+    <span class="pc-show">{episode.showName}</span>
+    <div class="pc-meta">
+      <span class="pc-date">{formatDate(episode.pubDate)}</span>
+      {#if episode.duration}
+        <span class="pc-dur">{Math.floor(episode.duration / 60)} min</span>
+      {/if}
+    </div>
   </div>
-  <button class="pod-play" on:click|stopPropagation={playEpisode}>
-    {active ? '⏸' : '▶'}
-  </button>
-</div>
+  <svg class="pc-play" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+</button>
 
 <style>
-  .pod-card {
-    display: flex; align-items: flex-start; gap: 14px;
-    background: #141420; border-radius: 10px; padding: 14px;
-    cursor: pointer; transition: background 0.15s;
+  .podcast-card {
+    display: flex; align-items: center; gap: 14px;
+    width: 100%; padding: 14px 16px; border: 1px solid rgba(255,255,255,0.04);
+    background: rgba(255,255,255,0.02); border-radius: 10px;
+    color: #F0EEF5; cursor: pointer; text-align: left;
+    font-family: inherit; font-size: inherit;
+    transition: all 0.15s;
   }
-  .pod-card:hover { background: #1e1e30; }
-  .pod-card.active { outline: 2px solid #7c5cbf; background: #1e1e30; }
-  .pod-icon { font-size: 36px; flex-shrink: 0; width: 48px; text-align: center; }
-  .pod-info { flex: 1; overflow: hidden; }
-  .pod-show { color: #7c5cbf; font-size: 11px; font-weight: 600; margin: 0 0 3px; text-transform: uppercase; letter-spacing: 0.5px; }
-  .pod-title { color: #fff; font-size: 14px; font-weight: 600; margin: 0 0 4px;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .pod-meta { color: #888; font-size: 11px; margin: 0 0 6px; }
-  .pod-desc { color: #b3b3b3; font-size: 12px; margin: 0;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .pod-play { flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%;
-    background: #1db954; border: none; color: #000; font-size: 14px;
-    cursor: pointer; display: flex; align-items: center; justify-content: center; }
-  .pod-play:hover { background: #1ed760; }
+  .podcast-card:hover {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(232,184,75,0.15);
+  }
+  .podcast-card.active {
+    border-color: rgba(232,184,75,0.3);
+    background: rgba(232,184,75,0.04);
+  }
+  .pc-icon { font-size: 32px; width: 44px; text-align: center; flex-shrink: 0; }
+  .pc-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .pc-title {
+    font-size: 14px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .pc-show { font-size: 12px; color: #8B89A6; }
+  .pc-meta { display: flex; gap: 12px; font-size: 11px; color: #5a5878; }
+  .pc-play { color: #5a5878; flex-shrink: 0; transition: color 0.15s; }
+  .podcast-card:hover .pc-play { color: #E8B84B; }
+  @media (max-width: 768px) {
+    .podcast-card { padding: 12px; }
+    .pc-icon { font-size: 24px; width: 36px; }
+  }
 </style>

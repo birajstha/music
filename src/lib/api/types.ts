@@ -4,8 +4,7 @@ export interface Track {
   artist: string;
   thumbnail: string;
   duration: number;
-  source: 'audius' | 'itunes' | 'youtube';
-  previewUrl?: string;
+  source: 'youtube';
   _type?: 'track' | 'podcast' | 'radio';
 }
 
@@ -42,8 +41,26 @@ export interface RadioStation {
 export interface LearningChannel {
   id: string;
   name: string;
+  channelId: string;
   query: string;
   icon: string;
 }
 
-export type PlayerItem = (Track | PodcastEpisode) & { _type: 'track' | 'podcast' | 'radio' };
+export type PlayerItem = Track & { _type: 'track' | 'podcast' | 'radio' };
+
+export interface Playlist {
+  id: string;
+  name: string;
+  tracks: TrackItem[];
+  createdAt: number;
+}
+
+export interface TrackItem {
+  id: string;
+  title: string;
+  artist: string;
+  thumbnail: string;
+  duration: number;
+  source: 'youtube';
+  addedAt: number;
+}

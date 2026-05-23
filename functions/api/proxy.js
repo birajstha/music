@@ -1,43 +1,43 @@
-/**
- * Cloudflare Pages Function — Edge proxy for Piped API + RSS feeds
- *
- * Caching strategy (unlimited users, no rate limits):
- *  - CF Cache API: responses cached at the edge globally for 2 min (music search)
- *    or 10 min (podcast RSS). All users in the same CF region share the same cache.
- *  - Cache key = canonical request URL (normalized, no auth headers)
- *  - On cache HIT: response served from edge, zero upstream requests
- *  - On cache MISS: fetch upstream, store in Cache API, return to user
- *
- * This means 1000 users searching "lofi beats" within 2 min = 1 upstream request.
- */
+const YOUTUBE_API_KEY = 'AIzaSy...1J2Y';
+const MUSIC_CACHE_TTL = 120;
+const PODCAST_CACHE_TTL = 600;
 
-const MUSIC_CACHE_TTL = 120;   // 2 min for Piped API responses
-const PODCAST_CACHE_TTL = 600; // 10 min for RSS feeds
+async function handleYouTube(path, url) {
+  if (path === '/api/youtube/search') {
+    const q = url.searchParams.get('q');
+    const channelId = url.searchParams.get('channelId');
+    const maxResults = url.searchParams.get('maxResults') || 20;
+    if (!q && !channelId) return new Response(JSON.stringify({ items: [] }), { headers: { 'Content-Type': 'application/json' } });
 
-export async function onRequestGet({ request }) {
-  const url = new URL(request.url);
-  const target = url.searchParams.get('url');
-
-  if (!target || !/^https?:\/\//.test(target)) {
-    return new Response(JSON.stringify({ error: 'Missing or invalid url param' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
+    const params = new URLSearchParams({
+      part: 'snippet',
+      maxResults: String(maxResults),
+      key: YOUTUBE_API_KEY,
+      type: 'video',
+      videoCategoryId: '10',
     });
+    if (q) params.set('q', q);
+    if (channelId) params.set('channelId', channelId);
+
+    const ytUrl = `https://www.googleapis.com/youtube/v3/search?${params}`;
+    return proxyFetch(ytUrl, MUSIC_CACHE_TTL, url);
   }
 
-  // Determine TTL based on target type
-  const isRSS = target.includes('podcast') || target.includes('rss') ||
-                target.includes('feed') || target.includes('npr.org') ||
-                target.includes('simplecast') || target.includes('megaphone') ||
-                target.includes('feedburner') || target.includes('omnycontent') ||
-                target.includes('lexfridman');
-  const ttl = isRSS ? PODCAST_CACHE_TTL : MUSIC_CACHE_TTL;
+  if (path === '/api/youtube/video') {
+    const id = url.searchParams.get('id');
+    if (!id) return new Response(JSON.stringify({ error: 'Missing id' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
 
-  // Build a stable cache key (strip any per-user params)
-  const cacheKey = new Request(`https://proxy-cache.evanietech.com/${encodeURIComponent(target)}`);
+    const ytUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${id}&key=${YOUTUBE_API_KEY}`;
+    return proxyFetch(ytUrl, MUSIC_CACHE_TTL, url);
+  }
+
+  return null;
+}
+
+async function proxyFetch(targetUrl, ttl, requestUrl) {
+  const cacheKey = new Request(`https://cache.evanietech.com/${encodeURIComponent(targetUrl)}`);
   const cache = caches.default;
 
-  // Try CF edge cache first
   const cached = await cache.match(cacheKey);
   if (cached) {
     const resp = new Response(cached.body, cached);
@@ -45,14 +45,10 @@ export async function onRequestGet({ request }) {
     return resp;
   }
 
-  // Cache miss — fetch from upstream
   try {
-    const upstream = await fetch(target, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; EvanieMusic/1.0)',
-        'Accept': 'application/json, application/rss+xml, application/xml, text/xml, */*',
-      },
-      signal: AbortSignal.timeout(15000),
+    const upstream = await fetch(targetUrl, {
+      headers: { 'User-Agent': 'ChillPill/1.0', 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(12000),
     });
 
     if (!upstream.ok) {
@@ -63,24 +59,17 @@ export async function onRequestGet({ request }) {
     }
 
     const body = await upstream.arrayBuffer();
-    const contentType = upstream.headers.get('Content-Type') || 'application/json';
-
     const response = new Response(body, {
       status: 200,
       headers: {
-        'Content-Type': contentType,
+        'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
         'Cache-Control': `public, max-age=${ttl}, s-maxage=${ttl}`,
         'X-Cache': 'MISS',
-        'Vary': 'Accept-Encoding',
       },
     });
-
-    // Store in CF edge cache (async, non-blocking)
     const toCache = response.clone();
-    // CF Cache API requires s-maxage or Cache-Control to cache
     await cache.put(cacheKey, toCache);
-
     return response;
   } catch (err) {
     return new Response(JSON.stringify({ error: err.message }), {
@@ -90,7 +79,34 @@ export async function onRequestGet({ request }) {
   }
 }
 
-// Handle CORS preflight
+export async function onRequestGet({ request }) {
+  const url = new URL(request.url);
+  const path = url.pathname;
+
+  // YouTube API endpoints
+  if (path.startsWith('/api/youtube/')) {
+    const result = await handleYouTube(path, url);
+    if (result) return result;
+  }
+
+  // RSS/Podcast proxy
+  if (path === '/api/proxy') {
+    const target = url.searchParams.get('url');
+    if (!target || !/^https?:\/\//.test(target)) {
+      return new Response(JSON.stringify({ error: 'Missing url param' }), {
+        status: 400, headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    const isRSS = /(podcast|rss|feed|npr|simplecast|megaphone|feedburner|omnycontent)/i.test(target);
+    const ttl = isRSS ? PODCAST_CACHE_TTL : MUSIC_CACHE_TTL;
+    return proxyFetch(target, ttl, url);
+  }
+
+  return new Response(JSON.stringify({ error: 'Not found' }), {
+    status: 404, headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 export async function onRequestOptions() {
   return new Response(null, {
     status: 204,

@@ -2,41 +2,50 @@
   import { onMount } from 'svelte';
   import TrackCard from '../lib/components/TrackCard.svelte';
   import { getHomeSections } from '../lib/api/music';
+  import { getWeather, type WeatherData } from '../lib/api/weather';
   import { player } from '../lib/stores/player';
   import type { Track } from '../lib/api/types';
 
-  let sections: { label: string; tracks: Track[] }[] = [];
-  let loading = true;
   const { currentTrack } = player;
 
+  export let onNavigate: (p: string) => void;
+  let sections: { label: string; tracks: Track[] }[] = [];
+  let loading = true;
+  let weather: WeatherData | null = null;
+
   onMount(async () => {
-    loading = true;
+    weather = await getWeather();
     sections = await getHomeSections().catch(() => []);
     loading = false;
   });
-
-  export let onNavigate: (p: string) => void = () => {};
 </script>
 
 <div class="home">
+  <!-- Hero -->
   <div class="hero">
-    <h1>Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 18 ? 'Afternoon' : 'Evening'} 🎵</h1>
-    <p>Free music, podcasts & learning — no account needed</p>
-    <div class="hero-actions">
-      <button class="cta" on:click={() => onNavigate('genres')}>Browse Genres 🎸</button>
-      <button class="cta secondary" on:click={() => onNavigate('podcasts')}>Podcasts 🎙️</button>
+    <div class="hero-text">
+      <h1>Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}</h1>
+      {#if weather}
+        <p class="weather-suggestion">{weather.condition} in {weather.location} — try some {weather.songMood}</p>
+      {:else}
+        <p>Pick a mood. Any mood.</p>
+      {/if}
+    </div>
+    <div class="hero-chips">
+      <button class="chip" on:click={() => onNavigate('genres')}>Browse genres</button>
+      <button class="chip secondary" on:click={() => onNavigate('radio')}>Live radio</button>
+      <button class="chip secondary" on:click={() => onNavigate('podcasts')}>Podcasts</button>
     </div>
   </div>
 
   {#if loading}
     <div class="loading">
       <div class="spinner"></div>
-      <p>Loading music...</p>
     </div>
   {:else}
     {#each sections as section}
-      <section class="track-section">
-        <h2>{section.label}</h2>
+      <section class="section">
+        <h2 class="section-title">{section.label}</h2>
         <div class="track-grid">
           {#each section.tracks as track}
             <TrackCard {track} queue={section.tracks} active={$currentTrack?.id === track.id} />
@@ -48,25 +57,38 @@
 </div>
 
 <style>
-  .home { padding: 0 0 20px; }
-  .hero { background: linear-gradient(135deg, #1a0533 0%, #0a0a1f 60%, #001a0a 100%); padding: 48px 32px 40px; margin-bottom: 32px; }
-  .hero h1 { color: #fff; font-size: 32px; font-weight: 700; margin: 0 0 8px; }
-  .hero p { color: #b3b3b3; font-size: 16px; margin: 0 0 24px; }
-  .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; }
-  .cta { padding: 12px 24px; border-radius: 24px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; background: #1db954; color: #000; transition: transform 0.15s; }
-  .cta:hover { transform: scale(1.03); }
-  .cta.secondary { background: transparent; color: #fff; border: 1px solid #555; }
-  .cta.secondary:hover { border-color: #fff; }
-  .loading { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 60px; color: #b3b3b3; }
-  .spinner { width: 40px; height: 40px; border: 3px solid #2a2a3a; border-top-color: #7c5cbf; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  .home { padding: 0 0 40px; }
+  .hero {
+    padding: 48px 40px 40px;
+    background: linear-gradient(135deg, rgba(232,184,75,0.06) 0%, rgba(124,111,224,0.04) 50%, transparent 100%);
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+  .hero-text { margin-bottom: 20px; }
+  .hero h1 { color: #F0EEF5; font-size: 36px; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.5px; }
+  .weather-suggestion { color: #8B89A6; font-size: 14px; margin: 0; }
+  .hero-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    padding: 8px 20px; border-radius: 20px; border: none;
+    font-size: 13px; font-weight: 500; cursor: pointer;
+    background: rgba(232,184,75,0.12); color: #E8B84B;
+    transition: background 0.15s;
+  }
+  .chip:hover { background: rgba(232,184,75,0.2); }
+  .chip.secondary { background: rgba(255,255,255,0.04); color: #8B89A6; }
+  .chip.secondary:hover { background: rgba(255,255,255,0.08); color: #F0EEF5; }
+
+  .loading { display: flex; justify-content: center; padding: 80px; }
+  .spinner { width: 36px; height: 36px; border: 3px solid rgba(232,184,75,0.1); border-top-color: #E8B84B; border-radius: 50%; animation: spin 0.8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .track-section { padding: 0 32px 32px; }
-  .track-section h2 { color: #fff; font-size: 20px; font-weight: 700; margin: 0 0 16px; }
+
+  .section { padding: 32px 40px 8px; }
+  .section-title { color: #F0EEF5; font-size: 20px; font-weight: 600; margin: 0 0 16px; }
   .track-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
+
   @media (max-width: 768px) {
     .hero { padding: 32px 16px 28px; }
-    .hero h1 { font-size: 24px; }
-    .track-section { padding: 0 16px 24px; }
-    .track-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+    .hero h1 { font-size: 26px; }
+    .section { padding: 24px 16px 8px; }
+    .track-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
   }
 </style>
