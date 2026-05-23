@@ -115,7 +115,8 @@ function createPlayerStore() {
     // Handle radio/podcast via audio element
     if (cur._type === 'radio' || cur._type === 'podcast') {
       const audioUrl = (cur as any).streamUrl || (cur as any).audioUrl;
-      if (!audioUrl) return;
+      if (!audioUrl) { loading.set(false); error.set('No stream URL'); return; }
+      loading.set(true);
       if (!radioAudio) {
         radioAudio = new Audio();
         radioAudio.onended = () => next();

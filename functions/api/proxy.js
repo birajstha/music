@@ -1,8 +1,7 @@
-const YOUTUBE_API_KEY = 'AIzaSy...1J2Y';
 const MUSIC_CACHE_TTL = 120;
 const PODCAST_CACHE_TTL = 600;
 
-async function handleYouTube(path, url) {
+async function handleYouTube(path, url, apiKey) {
   if (path === '/api/youtube/search') {
     const q = url.searchParams.get('q');
     const channelId = url.searchParams.get('channelId');
@@ -12,7 +11,7 @@ async function handleYouTube(path, url) {
     const params = new URLSearchParams({
       part: 'snippet',
       maxResults: String(maxResults),
-      key: YOUTUBE_API_KEY,
+      key: apiKey || 'missing',
       type: 'video',
       videoCategoryId: '10',
     });
@@ -27,7 +26,7 @@ async function handleYouTube(path, url) {
     const id = url.searchParams.get('id');
     if (!id) return new Response(JSON.stringify({ error: 'Missing id' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
 
-    const ytUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${id}&key=${YOUTUBE_API_KEY}`;
+    const ytUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${id}&key=${apiKey}`;
     return proxyFetch(ytUrl, MUSIC_CACHE_TTL, url);
   }
 
@@ -79,13 +78,14 @@ async function proxyFetch(targetUrl, ttl, requestUrl) {
   }
 }
 
-export async function onRequestGet({ request }) {
+export async function onRequestGet({ request, env }) {
   const url = new URL(request.url);
   const path = url.pathname;
+  const apiKey = env.YOUTUBE_API_KEY || '';
 
   // YouTube API endpoints
   if (path.startsWith('/api/youtube/')) {
-    const result = await handleYouTube(path, url);
+    const result = await handleYouTube(path, url, apiKey);
     if (result) return result;
   }
 

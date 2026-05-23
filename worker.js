@@ -1,17 +1,16 @@
-const YT_API_KEY = 'AIzaSyD2RWuVoJyd5Jwsgq01UHrkEbxF18U1J2Y';
-
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const { pathname, searchParams } = url;
+    const apiKey = env.YOUTUBE_API_KEY || '';
 
     // YouTube API proxy (keeps API key server-side)
     if (pathname === '/api/youtube/search') {
       const q = searchParams.get('q');
       const maxResults = searchParams.get('maxResults') || '30';
       const channelId = searchParams.get('channelId');
-      
-      let apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&maxResults=${maxResults}&key=${YT_API_KEY}`;
+
+      let apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&maxResults=${maxResults}&key=${apiKey}`;
       if (q) apiUrl += `&q=${encodeURIComponent(q)}`;
       if (channelId) apiUrl += `&channelId=${channelId}`;
 
@@ -21,7 +20,7 @@ export default {
     if (pathname === '/api/youtube/video') {
       const id = searchParams.get('id');
       if (!id) return json({ error: 'Missing id' }, 400);
-      const apiUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${id}&key=${YT_API_KEY}`;
+      const apiUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${id}&key=${apiKey}`;
       return handleYouTubeRequest(apiUrl, request, ctx, 600);
     }
 

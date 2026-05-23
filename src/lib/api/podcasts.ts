@@ -26,54 +26,76 @@ export async function fetchPodcastEpisodes(show: PodcastShow): Promise<PodcastEp
   const cached = _cache.get(show.id);
   if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.episodes;
 
-  // Fetch RSS through our CF proxy (edge cached)
-  const proxyUrl = `/api/proxy?url=${encodeURIComponent(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(show.rss)}`)}`;
-
   try {
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(20000) });
-    const data = await res.json();
-    if (data.status === 'ok' && data.items) {
-      const episodes: PodcastEpisode[] = data.items.slice(0, 20).map((item: any, i: number) => ({
-        id: `${show.id}-${i}`,
-        title: item.title || 'Untitled',
-        description: (item.description || '').replace(/<[^>]*>/g, '').trim().slice(0, 200),
-        pubDate: item.pubDate || '',
-        audioUrl: item.enclosure?.link || (item.link || ''),
-        duration: parseDuration(String(item.duration || '')),
-        showName: show.name,
-        showIcon: show.icon,
-        thumbnail: item.thumbnail?.url || item.thumbnail || '',
-      })).filter((e: PodcastEpisode) => e.audioUrl);
-
-      _cache.set(show.id, { episodes, ts: Date.now() });
-      return episodes;
-    }
-  } catch { /* fallback */ }
-
-  // Direct RSS fetch fallback
-  try {
-    const res = await fetch(`/api/proxy?url=${encodeURIComponent(show.rss)}`, { signal: AbortSignal.timeout(15000) });
+    const res = await fetch(`/api/proxy?url=${encodeURIComponent(show.rss)}`, {
+      signal: AbortSignal.timeout(15000),
+    });
     const xml = await res.text();
+
+    // Parse RSS XML
     const parser = new DOMParser();
     const doc = parser.parseFromString(xml, 'text/xml');
+
+    // Check for parser errors
+    const parseError = doc.querySelector('parsererror');
+    if (parseError) throw new Error('XML parse error');
+
     const items = Array.from(doc.querySelectorAll('item')).slice(0, 20);
 
     const episodes: PodcastEpisode[] = items.map((item, i) => {
       const enclosure = item.querySelector('enclosure');
+      const itunesDuration = item.querySelector('itunes\\:duration, duration');
+
+      // Try various thumbnail sources
+      const itunesImage = item.querySelector('itunes\\:image');
+      const mediaThumbnail = item.querySelector('media\\:thumbnail');
+      const thumbnail = itunesImage?.getAttribute('href')
+        || mediaThumbnail?.getAttribute('url')
+        || '';
+
       return {
         id: `${show.id}-${i}`,
         title: item.querySelector('title')?.textContent?.trim() || 'Untitled',
         description: item.querySelector('description')?.textContent?.replace(/<[^>]*>/g, '').trim().slice(0, 200) || '',
         pubDate: item.querySelector('pubDate')?.textContent?.trim() || '',
         audioUrl: enclosure?.getAttribute('url') || '',
-        duration: parseDuration(item.querySelector('duration')?.textContent?.trim() || ''),
+        duration: parseDuration(itunesDuration?.textContent?.trim() || ''),
         showName: show.name,
         showIcon: show.icon,
-        thumbnail: '',
+        thumbnail,
       };
     }).filter(e => e.audioUrl);
 
-    _cache.set(show.id, { episodes, ts: Date.now() });
+    if (episodes.length > 0) {
+      _cache.set(show.id, { episodes, ts: Date.now() });
+    }
     return episodes;
-  } catch { return []; }
+  } catch {
+    // Fallback: try JSON proxy (rss2json)
+    try {
+      const proxyUrl = `/api/proxy?url=${encodeURIComponent(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(show.rss)}`)}`;
+      const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(15000) });
+      const data = await res.json();
+      if (data.status === 'ok' && data.items) {
+        const episodes: PodcastEpisode[] = data.items.slice(0, 20).map((item: any, i: number) => ({
+          id: `${show.id}-${i}`,
+          title: item.title || 'Untitled',
+          description: (item.description || '').replace(/<[^>]*>/g, '').trim().slice(0, 200),
+          pubDate: item.pubDate || '',
+          audioUrl: item.enclosure?.link || '',
+          duration: parseDuration(String(item.duration || '')),
+          showName: show.name,
+          showIcon: show.icon,
+          thumbnail: item.thumbnail || '',
+        })).filter((e: PodcastEpisode) => e.audioUrl);
+
+        if (episodes.length > 0) {
+          _cache.set(show.id, { episodes, ts: Date.now() });
+        }
+        return episodes;
+      }
+    } catch { /* both methods failed */ }
+
+    return [];
+  }
 }

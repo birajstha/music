@@ -1,7 +1,5 @@
 import type { Track } from './types';
 
-const YT_API_KEY = 'AIzaSyD2RWuVoJyd5Jwsgq01UHrkEbxF18U1J2Y';
-
 // Client-side in-memory cache (3 min)
 const _cache = new Map<string, { data: unknown; ts: number }>();
 const CACHE_TTL = 3 * 60 * 1000;
