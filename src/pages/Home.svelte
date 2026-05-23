@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import TrackCard from '../lib/components/TrackCard.svelte';
-  import { searchTracks } from '../lib/api/piped';
+  import { searchTracks } from '../lib/api/music';
   import { player } from '../lib/stores/player';
   import type { Track } from '../lib/api/types';
   import { GENRES } from '../lib/api/constants';

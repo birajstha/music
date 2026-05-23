@@ -4,7 +4,7 @@ export interface Track {
   artist: string;
   thumbnail: string;
   duration: number; // seconds
-  source: 'piped';
+  source: 'piped' | 'audius';
 }
 
 export interface PodcastEpisode {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { searchTracks } from '../lib/api/piped';
+  import { searchTracks } from '../lib/api/music';
   import { player } from '../lib/stores/player';
   import TrackCard from '../lib/components/TrackCard.svelte';
   import type { Track } from '../lib/api/types';

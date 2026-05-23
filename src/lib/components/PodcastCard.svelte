@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PodcastEpisode, PodcastShow } from '../api/types';
   import { player } from '../stores/player';
-  import { formatDuration } from '../api/piped';
+  import { formatDuration } from '../api/music';
 
   export let episode: PodcastEpisode;
   export let active = false;

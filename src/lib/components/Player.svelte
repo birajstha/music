@@ -1,6 +1,6 @@
 <script lang="ts">
   import { player } from '../stores/player';
-  import { formatDuration } from '../api/piped';
+  import { formatDuration } from '../api/music';
 
   const { playing, loading, progress, duration, volume, muted,
           shuffle, repeat, dataSaver, currentTrack, error } = player;

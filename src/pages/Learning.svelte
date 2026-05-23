@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { LEARNING_CHANNELS } from '../lib/api/constants';
-  import { searchTracks } from '../lib/api/piped';
+  import { getLearningVideos } from '../lib/api/music';
   import { player } from '../lib/stores/player';
   import TrackCard from '../lib/components/TrackCard.svelte';
   import type { Track } from '../lib/api/types';
@@ -14,7 +14,7 @@
   async function loadChannel(ch: typeof LEARNING_CHANNELS[0]) {
     activeChannel = ch;
     loading = true; tracks = [];
-    tracks = await searchTracks(ch.query).catch(() => []);
+    tracks = await getLearningVideos(ch.id).catch(() => []);
     loading = false;
   }
 
@@ -24,7 +24,7 @@
 <div class="page">
   <div class="page-header">
     <h1>📚 Learn</h1>
-    <p>Top educational channels on YouTube — ad-free</p>
+    <p>Top educational YouTube channels — via RSS</p>
   </div>
 
   <div class="channel-tabs">
@@ -43,7 +43,7 @@
     <span class="ch-big-icon">{activeChannel.icon}</span>
     <div>
       <h2>{activeChannel.name}</h2>
-      <p>Latest videos</p>
+      <p>Latest videos — play audio only</p>
     </div>
   </div>
 
@@ -56,7 +56,7 @@
       {/each}
     </div>
   {:else}
-    <div class="empty"><p>No results. Try another channel.</p></div>
+    <div class="empty"><p>No videos found. Try another channel.</p></div>
   {/if}
 </div>
 

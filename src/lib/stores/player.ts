@@ -1,6 +1,6 @@
 import { writable, derived, get } from 'svelte/store';
 import type { PlayerItem } from '../api/types';
-import { getStreamUrl } from '../api/piped';
+import { getStreamUrl } from '../api/music';
 
 export type RepeatMode = 'none' | 'one' | 'all';
 

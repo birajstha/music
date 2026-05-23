@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Track } from '../api/types';
   import { player } from '../stores/player';
-  import { formatDuration } from '../api/piped';
+  import { formatDuration } from '../api/music';
 
   export let track: Track;
   export let queue: Track[] = [];
