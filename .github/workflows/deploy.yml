@@ -8,6 +8,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     name: Build & Deploy
+    permissions:
+      contents: read
+      deployments: write
     steps:
       - uses: actions/checkout@v4
 
