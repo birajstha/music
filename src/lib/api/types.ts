@@ -4,7 +4,7 @@ export interface Track {
   artist: string;
   thumbnail: string;
   duration: number;
-  source: 'audius' | 'itunes';
+  source: 'audius' | 'itunes' | 'youtube';
   previewUrl?: string;
   _type?: 'track' | 'podcast' | 'radio';
 }
