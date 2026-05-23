@@ -81,7 +81,7 @@ async function proxyFetch(targetUrl, ttl, requestUrl) {
 export async function onRequestGet({ request, env }) {
   const url = new URL(request.url);
   const path = url.pathname;
-  const apiKey = env.YOUTUBE_API_KEY || '';
+  const apiKey = env.YOUTUBE_API_KEY || 'AIzaSyD2RWuVoJyd5Jwsgq01UHrkEbxF18U1J2Y';
 
   // YouTube API endpoints
   if (path.startsWith('/api/youtube/')) {
