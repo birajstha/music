@@ -1,33 +1,19 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import TrackCard from '../lib/components/TrackCard.svelte';
-  import { searchTracks } from '../lib/api/music';
+  import { getHomeSections } from '../lib/api/music';
   import { player } from '../lib/stores/player';
   import type { Track } from '../lib/api/types';
-  import { GENRES } from '../lib/api/constants';
 
-  let featuredTracks: Track[] = [];
-  let nepaliTracks: Track[] = [];
-  let lofiTracks: Track[] = [];
+  let sections: { label: string; tracks: Track[] }[] = [];
   let loading = true;
   const { currentTrack } = player;
 
   onMount(async () => {
     loading = true;
-    [featuredTracks, nepaliTracks, lofiTracks] = await Promise.all([
-      searchTracks('trending music 2024').catch(() => []),
-      searchTracks('nepali music 2024 trending').catch(() => []),
-      searchTracks('lofi hip hop beats study chill').catch(() => []),
-    ]);
+    sections = await getHomeSections().catch(() => []);
     loading = false;
   });
-
-  function Section(label: string, tracks: Track[]) { return { label, tracks }; }
-  $: sections = [
-    { label: '🔥 Trending Now', tracks: featuredTracks.slice(0, 12) },
-    { label: '🇳🇵 Nepali Hot', tracks: nepaliTracks.slice(0, 12) },
-    { label: '🌙 Lo-Fi Chill', tracks: lofiTracks.slice(0, 12) },
-  ].filter(s => s.tracks.length > 0);
 
   export let onNavigate: (p: string) => void = () => {};
 </script>

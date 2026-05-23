@@ -1,31 +1,17 @@
 import type { Track } from './types';
-import { LEARNING_CHANNELS } from './constants';
+import { GENRES } from './constants';
 
-// ─── Audius: Decentralized music (no API key, reliable, CC-licensed) ───
-const AUDIUS_HOSTS = [
-  'https://discoveryprovider.audius.co',
-  'https://audius-discovery-1.virtualbs.io',
-];
+// ─── Audius: Trending music (genre-filtered, CC-licensed but has real artists) ───
+const AUDIUS = 'https://discoveryprovider.audius.co';
 
-interface AudiusTrack {
-  id: string;
-  title: string;
-  user: { name: string };
-  artwork?: { '480x480'?: string };
-  duration: number;
-  genre?: string;
-}
+// Map our genres to Audius genres
+const AUDIUS_GENRES: Record<string, string> = {
+  pop: 'Pop', rock: 'Rock', hiphop: 'Hip-Hop/Rap', rnb: 'R&B', edm: 'Electronic',
+  lofi: 'Lo-Fi', jazz: 'Jazz', classical: 'Classical', country: 'Country',
+  metal: 'Metal', indie: 'Indie', ambient: 'Ambient',
+};
 
-// Edge-cached fetch via CF proxy — first user fetches, rest hit cache
-async function fetchFromProxy<T>(url: string): Promise<T> {
-  const res = await fetch(`/api/proxy?url=${encodeURIComponent(url)}`, {
-    signal: AbortSignal.timeout(12000),
-  });
-  if (!res.ok) throw new Error(`Proxy ${res.status}`);
-  return res.json() as Promise<T>;
-}
-
-// Client-side in-memory cache (5 min) — avoids duplicate requests per session
+// Client-side cache (5 min)
 const _cache = new Map<string, { data: unknown; ts: number }>();
 const CACHE_TTL = 5 * 60 * 1000;
 
@@ -37,26 +23,24 @@ function setCache(key: string, data: unknown) {
   _cache.set(key, { data, ts: Date.now() });
 }
 
-async function audiusFetch<T>(path: string): Promise<T> {
-  const cacheKey = `audius:${path}`;
-  const cached = getCached<T>(cacheKey);
-  if (cached) return cached;
-
-  const errors: string[] = [];
-  for (const host of AUDIUS_HOSTS) {
-    try {
-      const data = await fetchFromProxy<T>(`${host}${path}`);
-      setCache(cacheKey, data);
-      return data;
-    } catch (e) { errors.push(String(e)); }
-  }
-  throw new Error(`Audius failed: ${errors.join(', ')}`);
+async function proxyFetch<T>(url: string): Promise<T> {
+  const res = await fetch(`/api/proxy?url=${encodeURIComponent(url)}`, {
+    signal: AbortSignal.timeout(12000),
+  });
+  if (!res.ok) throw new Error(`Proxy ${res.status}`);
+  return res.json() as Promise<T>;
 }
 
-function normalizeAudius(t: AudiusTrack): Track {
+interface AudiusTrack {
+  id: string; title: string;
+  user: { name: string };
+  artwork?: { '480x480'?: string };
+  duration: number;
+}
+
+function normalize(t: AudiusTrack): Track {
   return {
-    id: t.id,
-    title: t.title,
+    id: t.id, title: t.title,
     artist: t.user?.name || 'Unknown',
     thumbnail: t.artwork?.['480x480'] || '',
     duration: Math.floor(t.duration),
@@ -64,123 +48,120 @@ function normalizeAudius(t: AudiusTrack): Track {
   };
 }
 
-export async function searchTracks(query: string): Promise<Track[]> {
-  const data = await audiusFetch<{ data: AudiusTrack[] }>(
-    `/v1/tracks/search?query=${encodeURIComponent(query)}&limit=30`
-  );
-  return (data.data || []).map(normalizeAudius);
-}
-
-export async function getTrending(genre?: string): Promise<Track[]> {
-  const g = genre ? `&genre=${encodeURIComponent(genre)}` : '';
-  const data = await audiusFetch<{ data: AudiusTrack[] }>(
-    `/v1/tracks/trending?limit=50${g}`
-  );
-  return (data.data || []).map(normalizeAudius);
-}
-
-export async function getStreamUrl(trackId: string): Promise<{ url: string; bitrate: number }> {
-  // Audius streams directly — no fetch needed, just return the URL
-  return { url: `/api/proxy?url=${encodeURIComponent(`${AUDIUS_HOSTS[0]}/v1/tracks/${trackId}/stream`)}`, bitrate: 320 };
-}
-
-// ─── YouTube RSS: Learning channel videos (no API key needed) ─────────
-// YouTube channel IDs from channel URLs
-const YT_CHANNELS: Record<string, string> = {
-  fcc: 'UC8butISFwT-Wl7EV0hUK0BQ',
-  '3b1b': 'UCYO_jab_esuFRV4b17AJtAw',
-  fireship: 'UCsBjURrPoezykLs9EqgamOA',
-  traversy: 'UC29ju8bIPH5as8OGnQzwJyA',
-  ted_ed: 'UCsooa4yRKGN_zEE8iknghZA',
-  kurzgesagt: 'UCsXVk37bltHxD1rDPwtNM8Q',
-  mit: 'UCEBb1b_L6zDS3xTUrIALZOw',
-  veritasium: 'UCkyfHZ6bY2TjqbCwmJxWj4A',
-};
-
-// RSS → JSON via rss2json (free, no key, works via CF proxy)
-const RSS2JSON = 'https://api.rss2json.com/v1/api.json?rss_url=';
-
-interface RSSItem {
-  title: string;
-  link: string;
-  pubDate: string;
-  description: string;
-  thumbnail?: { url?: string };
-}
-
-async function fetchRSS(feedUrl: string): Promise<RSSItem[]> {
-  const url = `${RSS2JSON}${encodeURIComponent(feedUrl)}`;
-  try {
-    const res = await fetch(`/api/proxy?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(15000) });
-    const data = await res.json();
-    if (data.status === 'ok') return data.items || [];
-  } catch { /* fallback */ }
-  // Direct fetch fallback
-  try {
-    const directUrl = `/api/proxy?url=${encodeURIComponent(feedUrl)}`;
-    const res = await fetch(directUrl, { signal: AbortSignal.timeout(15000) });
-    const xml = await res.text();
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(xml, 'text/xml');
-    return Array.from(doc.querySelectorAll('entry, item')).map(el => ({
-      title: el.querySelector('title')?.textContent || '',
-      link: el.querySelector('link')?.getAttribute('href') || el.querySelector('link')?.textContent || '',
-      pubDate: el.querySelector('published')?.textContent || el.querySelector('pubDate')?.textContent || '',
-      description: '',
-    }));
-  } catch { return []; }
-}
-
-// YouTube oEmbed (free, no key, 200 req/sec limit — cached at edge)
-async function getVideoTitle(videoId: string): Promise<string> {
-  try {
-    const res = await fetch(`/api/proxy?url=${encodeURIComponent(`https://www.youtube.com/oembed?url=https://youtube.com/watch?v=${videoId}&format=json`)}`, {
-      signal: AbortSignal.timeout(8000),
-    });
-    const data = await res.json();
-    return data.title || '';
-  } catch { return ''; }
-}
-
-// Extract video ID from various YouTube URL formats
-function extractVideoId(url: string): string {
-  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
-  return m ? m[1] : '';
-}
-
-export async function getLearningVideos(channelId: string): Promise<Track[]> {
-  const cacheKey = `yt:${channelId}`;
+// ─── PRIMARY: Get trending music by genre (Audius) ──────────────────
+export async function getTrendingByGenre(genreId: string): Promise<Track[]> {
+  const cacheKey = `trending:${genreId}`;
   const cached = getCached<Track[]>(cacheKey);
   if (cached) return cached;
 
+  const genre = AUDIUS_GENRES[genreId];
+  const path = `/v1/tracks/trending?limit=30${genre ? `&genre=${encodeURIComponent(genre)}` : ''}`;
+  
+  try {
+    const data = await proxyFetch<{ data: AudiusTrack[] }>(`${AUDIUS}${path}`);
+    const tracks = (data.data || []).map(normalize);
+    if (tracks.length > 0) {
+      setCache(cacheKey, tracks);
+      return tracks;
+    }
+  } catch { /* fallback */ }
+  return [];
+}
+
+// ─── HOME: Trending across all genres ──────────────────────────────
+export async function getHomeSections() {
+  const cacheKey = 'home-sections';
+  const cached = getCached<{ label: string; tracks: Track[] }[]>(cacheKey);
+  if (cached) return cached;
+
+  const [trending, pop, hiphop, edm, lofi, rock, rnb, nepali] = await Promise.all([
+    proxyFetch<{ data: AudiusTrack[] }>(`${AUDIUS}/v1/tracks/trending?limit=20`).then(d => (d.data || []).map(normalize)).catch(() => []),
+    proxyFetch<{ data: AudiusTrack[] }>(`${AUDIUS}/v1/tracks/trending?limit=12&genre=Pop`).then(d => (d.data || []).map(normalize)).catch(() => []),
+    proxyFetch<{ data: AudiusTrack[] }>(`${AUDIUS}/v1/tracks/trending?limit=12&genre=Hip-Hop/Rap`).then(d => (d.data || []).map(normalize)).catch(() => []),
+    proxyFetch<{ data: AudiusTrack[] }>(`${AUDIUS}/v1/tracks/trending?limit=12&genre=Electronic`).then(d => (d.data || []).map(normalize)).catch(() => []),
+    proxyFetch<{ data: AudiusTrack[] }>(`${AUDIUS}/v1/tracks/trending?limit=12&genre=Lo-Fi`).then(d => (d.data || []).map(normalize)).catch(() => []),
+    proxyFetch<{ data: AudiusTrack[] }>(`${AUDIUS}/v1/tracks/trending?limit=12&genre=Rock`).then(d => (d.data || []).map(normalize)).catch(() => []),
+    proxyFetch<{ data: AudiusTrack[] }>(`${AUDIUS}/v1/tracks/trending?limit=12&genre=R&B`).then(d => (d.data || []).map(normalize)).catch(() => []),
+    proxyFetch<{ data: AudiusTrack[] }>(`${AUDIUS}/v1/tracks/trending?limit=12&genre=World`).then(d => (d.data || []).map(normalize)).catch(() => []),
+  ]);
+
+  const sections = [
+    trending.length && { label: '🔥 Trending Now', tracks: trending.slice(0, 20) },
+    pop.length && { label: '🎤 Pop Hits', tracks: pop },
+    hiphop.length && { label: '🎧 Hip-Hop', tracks: hiphop },
+    edm.length && { label: '⚡ EDM / Electronic', tracks: edm },
+    lofi.length && { label: '🌙 Lo-Fi Beats', tracks: lofi },
+    rock.length && { label: '🎸 Rock', tracks: rock },
+    rnb.length && { label: '🎶 R&B', tracks: rnb },
+    nepali.length && { label: '🌍 World', tracks: nepali },
+  ].filter(Boolean) as { label: string; tracks: Track[] }[];
+
+  setCache(cacheKey, sections);
+  return sections;
+}
+
+// ─── SEARCH: Audius search ─────────────────────────────────────────
+export async function searchTracks(query: string): Promise<Track[]> {
+  const cacheKey = `search:${query}`;
+  const cached = getCached<Track[]>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const data = await proxyFetch<{ data: AudiusTrack[] }>(
+      `${AUDIUS}/v1/tracks/search?query=${encodeURIComponent(query)}&limit=30`
+    );
+    const tracks = (data.data || []).map(normalize);
+    setCache(cacheKey, tracks);
+    return tracks;
+  } catch { return []; }
+}
+
+// ─── STREAM: Audius direct stream URL ──────────────────────────────
+export async function getStreamUrl(trackId: string): Promise<{ url: string; bitrate: number }> {
+  return { url: `/api/proxy?url=${encodeURIComponent(`${AUDIUS}/v1/tracks/${trackId}/stream`)}`, bitrate: 320 };
+}
+
+// ─── YOUTUBE RSS: Learning channels ─────────────────────────────────
+const YT_CHANNELS: Record<string, string> = {
+  fcc: 'UC8butISFwT-Wl7EV0hUK0BQ', '3b1b': 'UCYO_jab_esuFRV4b17AJtAw',
+  fireship: 'UCsBjURrPoezykLs9EqgamOA', traversy: 'UC29ju8bIPH5as8OGnQzwJyA',
+  ted_ed: 'UCsooa4yRKGN_zEE8iknghZA', kurzgesagt: 'UCsXVk37bltHxD1rDPwtNM8Q',
+  mit: 'UCEBb1b_L6zDS3xTUrIALZOw', veritasium: 'UCkyfHZ6bY2TjqbCwmJxWj4A',
+};
+
+export async function getLearningVideos(channelId: string): Promise<Track[]> {
+  const cacheKey = `learn:${channelId}`;
+  const cached = getCached<Track[]>(cacheKey);
+  if (cached) return cached;
+  
   const ytId = YT_CHANNELS[channelId];
   if (!ytId) return [];
 
-  const items = await fetchRSS(`https://www.youtube.com/feeds/videos.xml?channel_id=${ytId}`);
-
-  const tracks = items.slice(0, 20).map((item, i): Track | null => {
-    const videoId = extractVideoId(item.link);
-    return {
-      id: videoId || `yt-${channelId}-${i}`,
-      title: item.title || '',
-      artist: LEARNING_CHANNELS.find(c => c.id === channelId)?.name || 'YouTube',
-      thumbnail: item.thumbnail?.url || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
-      duration: 0,
-      source: 'audius',
-    };
-  }).filter(Boolean) as Track[];
-
-  setCache(cacheKey, tracks);
-  return tracks;
-}
-
-// ─── Podcast RSS (free, no key) ─────────────────────────────────────
-export async function fetchPodcastRSS(rssUrl: string): Promise<RSSItem[]> {
-  return fetchRSS(rssUrl);
+  try {
+    let feedUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${ytId}`;
+    // Try rss2json first
+    const data = await proxyFetch<{ status?: string; items?: any[] }>(
+      `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedUrl)}`
+    );
+    if (data.status === 'ok' && data.items) {
+      const tracks = data.items.slice(0, 20).map((item: any, i: number) => ({
+        id: (item.link || '').match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1] || `yt-${channelId}-${i}`,
+        title: item.title || '',
+        artist: item.author || GENRES.find(c => c.id === channelId)?.label || 'YouTube',
+        thumbnail: item.thumbnail?.url || `https://i.ytimg.com/vi/${(item.link || '').match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1] || ''}/mqdefault.jpg`,
+        duration: 0,
+        source: 'audius' as const,
+      }));
+      setCache(cacheKey, tracks);
+      return tracks;
+    }
+  } catch { /* fallback */ }
+  return [];
 }
 
 export function formatDuration(seconds: number): string {
+  if (!seconds || isNaN(seconds)) return '0:00';
   const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
+  const s = Math.floor(seconds % 60);
   return `${m}:${s.toString().padStart(2, '0')}`;
 }

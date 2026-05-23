@@ -5,13 +5,11 @@
   const { playing, loading, progress, duration, volume, muted,
           shuffle, repeat, dataSaver, currentTrack, error } = player;
 
-  let progressBar: HTMLDivElement;
-
   function hideImg(e: Event) { (e.target as HTMLElement).style.display = 'none'; }
 
-  function onProgressClick(e: MouseEvent) {
-    const rect = progressBar.getBoundingClientRect();
-    player.seek((e.clientX - rect.left) / rect.width);
+  function onSeek(e: Event) {
+    const val = +(e.target as HTMLInputElement).value;
+    player.seek(val);
   }
 
   function onVolumeChange(e: Event) {
@@ -22,8 +20,6 @@
   $: total = $duration ? formatDuration(Math.floor($duration)) : '0:00';
   $: repeatIcon = $repeat === 'none' ? '🔁' : $repeat === 'one' ? '🔂' : '🔁';
   $: repeatActive = $repeat !== 'none';
-
-  // Avoid `as any` casts in template — compute here
   $: trackThumb = $currentTrack ? ($currentTrack as any).thumbnail || ($currentTrack as any).thumbnailUrl || '' : '';
   $: trackArtist = $currentTrack ? (($currentTrack as any).artist || ($currentTrack as any).showName || '') : '';
 </script>
@@ -52,14 +48,12 @@
         on:click={() => repeat.update(r => r === 'none' ? 'all' : r === 'all' ? 'one' : 'none')}
         title="Repeat">{repeatIcon}</button>
     </div>
-    <!-- Progress bar -->
+    <!-- Progress slider -->
     <div class="progress-row">
       <span class="time">{elapsed}</span>
-      <!-- svelte-ignore a11y-click-events-have-key-events -->
-      <!-- svelte-ignore a11y-no-static-element-interactions -->
-      <div class="progress-bar" bind:this={progressBar} on:click={onProgressClick}>
-        <div class="progress-fill" style="width: {$progress * 100}%"></div>
-      </div>
+      <input type="range" class="progress-slider" min="0" max="1" step="0.001"
+        value={$progress} on:input={onSeek}
+        style="background: linear-gradient(to right, #1db954 0%, #1db954 {$progress * 100}%, #3a3a4a {$progress * 100}%, #3a3a4a 100%);" />
       <span class="time">{total}</span>
     </div>
   </div>
@@ -70,8 +64,8 @@
     <button class="ctrl-btn" on:click={() => player.toggleMute()} title="Mute">
       {$muted || $volume === 0 ? '🔇' : $volume < 0.5 ? '🔉' : '🔊'}
     </button>
-    <input type="range" min="0" max="1" step="0.01" value={$volume}
-      on:input={onVolumeChange} class="volume-slider" />
+    <input type="range" class="volume-slider" min="0" max="1" step="0.01"
+      value={$volume} on:input={onVolumeChange} />
     <button class="ctrl-btn {$dataSaver ? 'active' : ''}"
       on:click={() => dataSaver.update(d => !d)} title="Data Saver">
       {$dataSaver ? '🌿' : '📶'}
@@ -103,9 +97,23 @@
 
   .progress-row { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 500px; }
   .time { color: #b3b3b3; font-size: 11px; min-width: 32px; }
-  .progress-bar { flex: 1; height: 4px; background: #3a3a4a; border-radius: 2px; cursor: pointer; position: relative; }
-  .progress-bar:hover { height: 6px; }
-  .progress-fill { height: 100%; background: #1db954; border-radius: 2px; transition: width 0.1s linear; }
+  
+  /* Draggable progress slider */
+  .progress-slider {
+    -webkit-appearance: none; appearance: none;
+    flex: 1; height: 5px;
+    border-radius: 3px; outline: none; cursor: pointer;
+  }
+  .progress-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: #1db954; cursor: pointer; border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  }
+  .progress-slider::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: #1db954; cursor: pointer; border: 2px solid #fff;
+  }
 
   .player-right { display: flex; align-items: center; gap: 8px; width: 200px; justify-content: flex-end; }
   .volume-slider { width: 80px; accent-color: #7c5cbf; cursor: pointer; }
@@ -116,6 +124,7 @@
     .player-info { width: auto; flex: 1; }
     .player-right { display: none; }
     .progress-row { max-width: 200px; }
+    .progress-slider { height: 4px; }
     .ctrl-btn { font-size: 14px; }
   }
 </style>
