@@ -34,3 +34,18 @@ jobs:
           directory: dist
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
           wranglerVersion: '3'
+
+      - name: Set YOUTUBE_API_KEY as Pages environment variable
+        run: |
+          curl -s -X PATCH "https://api.cloudflare.com/client/v4/accounts/b76a05388b01b4e59515ffccb0c2fa58/pages/projects/music" \
+            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data '{
+              "deployment_configs": {
+                "production": {
+                  "env_vars": {
+                    "YOUTUBE_API_KEY": { "type": "secret_text", "value": "${{ secrets.YOUTUBE_API_KEY }}" }
+                  }
+                }
+              }
+            }'
