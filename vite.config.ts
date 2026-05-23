@@ -9,8 +9,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icons/*.png', 'og-image.png'],
       manifest: {
-        name: 'Evanié Music',
-        short_name: 'Music',
+        name: 'ChillPill',
+        short_name: 'ChillPill',
         description: 'Free music streaming — genres, podcasts & learning',
         start_url: '/',
         scope: '/',

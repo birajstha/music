@@ -3,8 +3,10 @@ export interface Track {
   title: string;
   artist: string;
   thumbnail: string;
-  duration: number; // seconds
-  source: 'piped' | 'audius';
+  duration: number;
+  source: 'audius' | 'itunes';
+  previewUrl?: string;
+  _type?: 'track' | 'podcast' | 'radio';
 }
 
 export interface PodcastEpisode {
@@ -27,11 +29,14 @@ export interface PodcastShow {
   rss: string;
 }
 
-export interface Genre {
+export interface RadioStation {
   id: string;
-  label: string;
-  query: string;
+  name: string;
+  slogan: string;
+  streamUrl: string;
+  icon: string;
   color: string;
+  location: string;
 }
 
 export interface LearningChannel {
@@ -41,4 +46,4 @@ export interface LearningChannel {
   icon: string;
 }
 
-export type PlayerItem = (Track | PodcastEpisode) & { _type: 'track' | 'podcast' };
+export type PlayerItem = (Track | PodcastEpisode) & { _type: 'track' | 'podcast' | 'radio' };

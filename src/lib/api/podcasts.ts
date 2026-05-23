@@ -12,11 +12,7 @@ export const PODCAST_SHOWS: PodcastShow[] = [
 ];
 
 const _cache = new Map<string, { episodes: PodcastEpisode[]; ts: number }>();
-const CACHE_TTL = 10 * 60 * 1000; // 10 min for podcasts
-
-function proxyUrl(url: string): string {
-  return `/api/proxy?url=${encodeURIComponent(url)}`;
-}
+const CACHE_TTL = 10 * 60 * 1000;
 
 function parseDuration(s: string): number {
   if (!s) return 0;
@@ -30,42 +26,54 @@ export async function fetchPodcastEpisodes(show: PodcastShow): Promise<PodcastEp
   const cached = _cache.get(show.id);
   if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.episodes;
 
-  const proxied = proxyUrl(show.rss);
-  let xml = '';
+  // Fetch RSS through our CF proxy (edge cached)
+  const proxyUrl = `/api/proxy?url=${encodeURIComponent(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(show.rss)}`)}`;
+
   try {
-    const res = await fetch(proxied, { signal: AbortSignal.timeout(15000) });
-    xml = await res.text();
-  } catch {
-    try {
-      const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(show.rss)}`, { signal: AbortSignal.timeout(15000) });
-      const data = await res.json() as { contents: string };
-      xml = data.contents;
-    } catch { return []; }
-  }
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(20000) });
+    const data = await res.json();
+    if (data.status === 'ok' && data.items) {
+      const episodes: PodcastEpisode[] = data.items.slice(0, 20).map((item: any, i: number) => ({
+        id: `${show.id}-${i}`,
+        title: item.title || 'Untitled',
+        description: (item.description || '').replace(/<[^>]*>/g, '').trim().slice(0, 200),
+        pubDate: item.pubDate || '',
+        audioUrl: item.enclosure?.link || (item.link || ''),
+        duration: parseDuration(String(item.duration || '')),
+        showName: show.name,
+        showIcon: show.icon,
+        thumbnail: item.thumbnail?.url || item.thumbnail || '',
+      })).filter((e: PodcastEpisode) => e.audioUrl);
 
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xml, 'text/xml');
-  const items = Array.from(doc.querySelectorAll('item')).slice(0, 20);
+      _cache.set(show.id, { episodes, ts: Date.now() });
+      return episodes;
+    }
+  } catch { /* fallback */ }
 
-  const episodes: PodcastEpisode[] = items.map((item, i) => {
-    const enclosure = item.querySelector('enclosure');
-    const audioUrl = enclosure?.getAttribute('url') || '';
-    const durationEl = item.querySelector('duration');
-    const imgEl = item.querySelector('image') || item.querySelector('itunes\\:image');
+  // Direct RSS fetch fallback
+  try {
+    const res = await fetch(`/api/proxy?url=${encodeURIComponent(show.rss)}`, { signal: AbortSignal.timeout(15000) });
+    const xml = await res.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xml, 'text/xml');
+    const items = Array.from(doc.querySelectorAll('item')).slice(0, 20);
 
-    return {
-      id: `${show.id}-${i}`,
-      title: item.querySelector('title')?.textContent?.trim() || 'Untitled',
-      description: item.querySelector('description')?.textContent?.replace(/<[^>]*>/g, '').trim().slice(0, 200) || '',
-      pubDate: item.querySelector('pubDate')?.textContent?.trim() || '',
-      audioUrl,
-      duration: parseDuration(durationEl?.textContent?.trim() || ''),
-      showName: show.name,
-      showIcon: show.icon,
-      thumbnail: imgEl?.getAttribute('href') || imgEl?.getAttribute('url') || '',
-    };
-  }).filter(e => e.audioUrl);
+    const episodes: PodcastEpisode[] = items.map((item, i) => {
+      const enclosure = item.querySelector('enclosure');
+      return {
+        id: `${show.id}-${i}`,
+        title: item.querySelector('title')?.textContent?.trim() || 'Untitled',
+        description: item.querySelector('description')?.textContent?.replace(/<[^>]*>/g, '').trim().slice(0, 200) || '',
+        pubDate: item.querySelector('pubDate')?.textContent?.trim() || '',
+        audioUrl: enclosure?.getAttribute('url') || '',
+        duration: parseDuration(item.querySelector('duration')?.textContent?.trim() || ''),
+        showName: show.name,
+        showIcon: show.icon,
+        thumbnail: '',
+      };
+    }).filter(e => e.audioUrl);
 
-  _cache.set(show.id, { episodes, ts: Date.now() });
-  return episodes;
+    _cache.set(show.id, { episodes, ts: Date.now() });
+    return episodes;
+  } catch { return []; }
 }

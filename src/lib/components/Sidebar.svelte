@@ -1,43 +1,32 @@
 <script lang="ts">
+  import { playlists, playlistCount, createPlaylist, deletePlaylist } from '../stores/playlists';
+
   export let page: string;
   export let onNavigate: (p: string) => void = () => {};
 
   const NAV = [
     { id: 'home',     icon: '🏠', label: 'Home' },
     { id: 'genres',   icon: '🎸', label: 'Genres' },
-    { id: 'search',   icon: '🔍', label: 'Search' },
+    { id: 'radio',    icon: '📻', label: 'Radio' },
     { id: 'podcasts', icon: '🎙️', label: 'Podcasts' },
     { id: 'learning', icon: '📚', label: 'Learn' },
+    { id: 'search',   icon: '🔍', label: 'Search' },
   ];
 
-  let installPrompt: any = null;
-  let showInstall = false;
-  let isIOS = false;
-  let showIOSGuide = false;
+  let showPlistMenu = '';
+  let newPlistName = '';
 
-  if (typeof window !== 'undefined') {
-    isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-    const standalone = (window.navigator as any).standalone || window.matchMedia('(display-mode: standalone)').matches;
-    if (isIOS && !standalone) showInstall = true;
-    window.addEventListener('beforeinstallprompt', (e: any) => {
-      e.preventDefault(); installPrompt = e; showInstall = true;
-    });
-    window.addEventListener('appinstalled', () => { showInstall = false; showIOSGuide = false; });
-  }
-
-  async function install() {
-    if (isIOS) { showIOSGuide = !showIOSGuide; return; }
-    if (!installPrompt) return;
-    installPrompt.prompt();
-    const { outcome } = await installPrompt.userChoice;
-    if (outcome === 'accepted') showInstall = false;
-    installPrompt = null;
+  function createNew() {
+    if (!newPlistName.trim()) return;
+    createPlaylist(newPlistName.trim());
+    newPlistName = '';
   }
 </script>
 
 <!-- Desktop sidebar -->
 <nav class="sidebar">
-  <div class="logo">🎵 <span>Evanié</span></div>
+  <div class="logo"><span class="logo-icon">💊</span> <span>ChillPill</span></div>
+
   {#each NAV as item}
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-static-element-interactions -->
@@ -47,15 +36,36 @@
     </div>
   {/each}
 
-  <div class="sidebar-footer">
-    {#if showInstall}
-      <button class="install-btn" on:click={install}>📲 Install App</button>
-    {/if}
-    <p class="brand">Powered by free sources</p>
+  <!-- Playlists -->
+  <div class="plist-header">
+    <span class="plist-title">📚 Your Library</span>
+    <span class="plist-count">{$playlistCount} tracks</span>
+  </div>
+  <div class="plist-list">
+    {#each $playlists as pl}
+      <div class="plist-item" on:click={() => { showPlistMenu = showPlistMenu === pl.id ? '' : pl.id; }}>
+        <span>🎶 {pl.name}</span>
+        <span class="plist-count">{pl.tracks.length}</span>
+      </div>
+      {#if showPlistMenu === pl.id}
+        <div class="plist-menu">
+          <button on:click|stopPropagation={() => { deletePlaylist(pl.id); showPlistMenu = ''; }}>🗑️ Delete</button>
+        </div>
+      {/if}
+    {/each}
+    <div class="plist-create">
+      <input type="text" bind:value={newPlistName} placeholder="New playlist..."
+        on:keydown={(e) => e.key === 'Enter' && createNew()} />
+      <button on:click={createNew}>+</button>
+    </div>
+  </div>
+
+  <div class="sidebar-foot">
+    <p class="brand">Evanié Sound</p>
   </div>
 </nav>
 
-<!-- Mobile bottom tab bar -->
+<!-- Mobile tabbar -->
 <nav class="tabbar">
   {#each NAV as item}
     <!-- svelte-ignore a11y-click-events-have-key-events -->
@@ -67,58 +77,40 @@
   {/each}
 </nav>
 
-{#if showIOSGuide}
-  <!-- svelte-ignore a11y-click-events-have-key-events -->
-  <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div class="ios-overlay" on:click={() => showIOSGuide = false}>
-    <div class="ios-guide" on:click|stopPropagation>
-      <h3>Install Evanié Music</h3>
-      <p>1. Tap <strong>Share ⎙</strong> in Safari</p>
-      <p>2. Choose <strong>Add to Home Screen ➕</strong></p>
-      <p>3. Tap <strong>Add ✅</strong></p>
-      <button on:click={() => showIOSGuide = false}>Got it</button>
-    </div>
-  </div>
-{/if}
-
 <style>
   .sidebar {
     position: fixed; top: 0; left: 0; bottom: 80px; width: 220px;
-    background: #0d0d18; display: flex; flex-direction: column;
-    padding: 20px 0; border-right: 1px solid #1a1a2e; z-index: 50;
+    background: #0b0b14; display: flex; flex-direction: column;
+    padding: 16px 0; border-right: 1px solid #1a1a2e; z-index: 50;
   }
-  .logo { color: #fff; font-size: 20px; font-weight: 700; padding: 8px 20px 24px; }
-  .logo span { background: linear-gradient(135deg, #7c5cbf, #1db954); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-  .nav-item { display: flex; align-items: center; gap: 14px; padding: 12px 20px; cursor: pointer; color: #b3b3b3; border-radius: 0; transition: all 0.15s; }
-  .nav-item:hover { color: #fff; background: rgba(255,255,255,0.05); }
-  .nav-item.active { color: #fff; background: rgba(124,92,191,0.15); border-right: 3px solid #7c5cbf; }
-  .nav-icon { font-size: 18px; }
-  .nav-label { font-size: 14px; font-weight: 500; }
-  .sidebar-footer { margin-top: auto; padding: 16px 20px; }
-  .install-btn { width: 100%; padding: 10px; background: #7c5cbf; border: none; border-radius: 8px; color: #fff; font-size: 13px; cursor: pointer; margin-bottom: 8px; }
-  .install-btn:hover { background: #9370d8; }
-  .brand { color: #555; font-size: 11px; margin: 0; }
+  .logo { color: #fff; font-size: 18px; font-weight: 700; padding: 4px 20px 20px; }
+  .logo-icon { margin-right: 4px; }
+  .logo span:last-child { background: linear-gradient(135deg, #7c5cbf, #9370d8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .nav-item { display: flex; align-items: center; gap: 12px; padding: 10px 20px; cursor: pointer; color: #aaa; transition: all 0.15s; }
+  .nav-item:hover { color: #fff; background: rgba(255,255,255,0.03); }
+  .nav-item.active { color: #fff; background: rgba(124,92,191,0.12); border-right: 3px solid #7c5cbf; }
+  .nav-icon { font-size: 16px; }
+  .nav-label { font-size: 13px; font-weight: 500; }
+  .plist-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px 6px; color: #888; font-size: 11px; text-transform: uppercase; }
+  .plist-count { font-size: 10px; color: #555; }
+  .plist-list { flex: 1; overflow-y: auto; padding: 0 12px; }
+  .plist-item { display: flex; justify-content: space-between; padding: 6px 8px; cursor: pointer; color: #aaa; font-size: 12px; border-radius: 4px; }
+  .plist-item:hover { background: #1a1a2e; color: #fff; }
+  .plist-menu { padding: 2px 8px 6px; }
+  .plist-menu button { background: none; border: none; color: #e74c3c; font-size: 11px; cursor: pointer; padding: 2px 8px; }
+  .plist-create { display: flex; gap: 4px; padding: 6px 8px; }
+  .plist-create input { flex: 1; background: #0a0a0f; border: 1px solid #1a1a2e; border-radius: 4px; color: #fff; padding: 4px 8px; font-size: 11px; }
+  .plist-create button { background: #7c5cbf; border: none; color: #fff; border-radius: 4px; padding: 4px 8px; cursor: pointer; }
+  .sidebar-foot { padding: 12px 20px 8px; }
+  .brand { color: #3a3a5a; font-size: 10px; margin: 0; }
 
-  /* Mobile tabbar */
-  .tabbar {
-    display: none; position: fixed; bottom: 0; left: 0; right: 0; height: 60px;
-    background: #0d0d18; border-top: 1px solid #1a1a2e;
-    flex-direction: row; justify-content: space-around; align-items: center;
-    z-index: 100;
-  }
+  .tabbar { display: none; position: fixed; bottom: 0; left: 0; right: 0; height: 60px;
+    background: #0b0b14; border-top: 1px solid #1a1a2e;
+    flex-direction: row; justify-content: space-around; align-items: center; z-index: 100; }
   .tab { display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; padding: 6px 10px; color: #888; flex: 1; }
   .tab.active { color: #7c5cbf; }
-  .tab-icon { font-size: 20px; }
-  .tab-label { font-size: 10px; font-weight: 500; }
+  .tab-icon { font-size: 18px; }
+  .tab-label { font-size: 9px; font-weight: 500; }
 
-  .ios-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 200; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 80px; }
-  .ios-guide { background: #1e1e30; border-radius: 16px; padding: 24px; max-width: 320px; width: 100%; }
-  .ios-guide h3 { color: #fff; margin: 0 0 16px; }
-  .ios-guide p { color: #b3b3b3; margin: 8px 0; font-size: 14px; }
-  .ios-guide button { margin-top: 16px; width: 100%; padding: 12px; background: #7c5cbf; border: none; border-radius: 8px; color: #fff; font-size: 14px; cursor: pointer; }
-
-  @media (max-width: 768px) {
-    .sidebar { display: none; }
-    .tabbar { display: flex; }
-  }
+  @media (max-width: 768px) { .sidebar { display: none; } .tabbar { display: flex; } }
 </style>
